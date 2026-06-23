@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Orion Private Chat ❤️</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body {
+      background: radial-gradient(circle at 20% 50%, #1a1a3e, #0b0e1a);
+      min-height:100vh; display:flex; align-items:center; justify-content:center;
+      overflow:hidden; position:relative;
+      transition: background 0.8s ease;
+    }
+    /* Couple mode background */
+    body.couple-mode {
+      background: radial-gradient(circle at 20% 50%, #3a1a2e, #1a0b0e);
+    }
+    /* Heart rain container */
+    .hearts-container {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .heart-rain {
+      position: absolute;
+      font-size: 24px;
+      animation: heartFall linear infinite;
+      opacity: 0.7;
+      transform: rotate(var(--rot));
+    }
+    @keyframes heartFall {
+      0% { transform: translateY(-10vh) rotate(0deg) scale(0.8); opacity: 0.9; }
+      100% { transform: translateY(110vh) rotate(720deg) scale(1.2); opacity: 0.2; }
+    }
+    /* Different heart types */
+    .heart-rain:nth-child(odd) { animation-duration: 8s; font-size: 28px; }
+    .heart-rain:nth-child(even) { animation-duration: 12s; font-size: 20px; }
+    .heart-rain:nth-child(3n) { animation-duration: 10s; font-size: 34px; }
+    .heart-rain:nth-child(5n) { animation-duration: 14s; font-size: 18px; }
+
+    .glass {
+      background: rgba(10,10,30,0.7);
+      backdrop-filter: blur(30px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 48px;
+      padding: 30px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.9);
+      width:100%; max-width:850px; height:95vh;
+      display:flex; flex-direction:column;
+      transition: all 0.4s ease;
+      position:relative;
+      z-index:1;
+    }
+    body.couple-mode .glass {
+      background: rgba(30,10,20,0.7);
+      border-color: rgba(255,100,150,0.2);
+      box-shadow: 0 30px 80px rgba(200,50,100,0.3);
+    }
+    .hidden { display:none !important; }
+    .page { animation: fadeScale 0.4s ease; flex:1; display:flex; flex-direction:column; }
+    @keyframes fadeScale { from { opacity:0; transform: scale(0.95); } to { opacity:1; transform: scale(1); } }
+
+    input, button {
+      width:100%; padding: 14px 18px; margin: 8px 0;
+      border: none; border-radius: 20px;
+      background: rgba(255,255,255,0.07);
+      color: #eee; font-size: 1rem;
+      outline: 1px solid rgba(255,255,255,0.1);
+      transition: 0.3s;
+    }
+    input:focus { outline: 2px solid #6c5ce7; background: rgba(255,255,255,0.12); }
+    body.couple-mode input:focus { outline: 2px solid #ff6b9d; }
+    button {
+      background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+      color: white; font-weight: 600; cursor: pointer;
+    }
+    button:hover { transform: scale(1.02); opacity: 0.9; }
+    body.couple-mode button {
+      background: linear-gradient(135deg, #e84393, #fd79a8);
+      box-shadow: 0 0 20px rgba(232,67,147,0.3);
+    }
+    .flex { display: flex; gap: 12px; flex-wrap: wrap; }
+    .flex > * { flex:1; min-width:140px; }
+
+    /* Couple toggle */
+    .couple-toggle {
+      display: flex; align-items: center; gap: 12px;
+      background: rgba(255,255,255,0.05); padding: 10px 18px;
+      border-radius: 40px; margin: 10px 0;
+      justify-content: center;
+      color: #b2bec3; font-size: 0.9rem;
+    }
+    .couple-toggle input[type="checkbox"] {
+      width: 50px; height: 26px; appearance: none;
+      background: #444; border-radius: 30px;
+      position: relative; cursor: pointer;
+      transition: 0.3s; outline: none;
+    }
+    .couple-toggle input[type="checkbox"]:checked {
+      background: #e84393;
+      box-shadow: 0 0 20px #e84393;
+    }
+    .couple-toggle input[type="checkbox"]::before {
+      content: ''; position: absolute; width: 22px; height: 22px;
+      background: white; border-radius: 50%;
+      top: 2px; left: 2px;
+      transition: 0.3s;
+    }
+    .couple-toggle input[type="checkbox"]:checked::before {
+      transform: translateX(24px);
+      background: #ffd1dc;
+    }
+    .badge-couple {
+      display: inline-block;
+      background: linear-gradient(135deg, #e84393, #fd79a8);
+      color: white; font-size: 0.7rem;
+      padding: 2px 12px; border-radius: 30px;
+      margin-left: 8px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      animation: glowPulse 2s infinite, heartbeat 1.5s infinite;
+    }
+    @keyframes glowPulse {
+      0% { box-shadow: 0 0 5px #e84393; }
+      50% { box-shadow: 0 0 25px #e84393; }
+      100% { box-shadow: 0 0 5px #e84393; }
+    }
+    @keyframes heartbeat {
+      0% { transform: scale(1); }
+      14% { transform: scale(1.1); }
+      28% { transform: scale(1); }
+      42% { transform: scale(1.1); }
+      70% { transform: scale(1); }
+    }
+
+    .chat-container { flex:1; display:flex; flex-direction:column; overflow:hidden; margin-top:8px; }
+    .chat-header { display:flex; justify-content:space-between; align-items:center; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.05); }
+    .chat-box { flex:1; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 24px; padding: 16px; margin: 8px 0; scroll-behavior:smooth; }
+    .msg-wrapper { margin:6px 0; display:flex; flex-direction:column; align-items:flex-start; }
+    .msg-wrapper.self { align-items:flex-end; }
+    .msg { padding: 10px 16px; border-radius: 18px; max-width: 80%; word-wrap: break-word; position:relative; animation: slideUp 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+    body.couple-mode .msg-wrapper.self .msg { background: rgba(232,67,147,0.25); border:1px solid rgba(232,67,147,0.3); }
+    body.couple-mode .msg-wrapper.other .msg { background: rgba(253,121,168,0.15); border:1px solid rgba(253,121,168,0.2); }
+    .msg .sender { font-size: 0.7rem; font-weight:600; margin-bottom:2px; opacity:0.8; }
+    .msg .text { font-size:1rem; }
+    .msg .meta { display:flex; justify-content:flex-end; align-items:center; gap:6px; font-size:0.65rem; opacity:0.6; margin-top:4px; }
+    .msg .meta .tick { color: #4fc3f7; font-size:0.8rem; }
+    .msg .meta .tick.read { color: #4fc3f7; }
+    body.couple-mode .msg .meta .tick.read { color: #fd79a8; }
+    .msg .meta .tick.unread { color: #888; }
+    .msg-wrapper.self .msg { background: rgba(0,200,200,0.2); border:1px solid rgba(0,200,200,0.3); }
+    .msg-wrapper.other .msg { background: rgba(108,92,231,0.2); border:1px solid rgba(108,92,231,0.3); }
+    .msg.edited::after { content: " (edited)"; font-size:0.6rem; opacity:0.5; margin-left:4px; }
+
+    .notification { position:fixed; top:20px; right:20px; background: #1e272e; padding: 12px 24px; border-radius: 40px; color:white; box-shadow: 0 10px 30px rgba(0,0,0,0.6); animation: slideDown 0.5s ease; z-index:999; }
+    @keyframes slideDown { from { transform: translateY(-80px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+    .online-badge { background: #00b894; padding: 4px 16px; border-radius: 30px; font-size:0.8rem; }
+    .typing-indicator { color: #b2bec3; font-style: italic; font-size:0.8rem; margin:4px 0; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%{opacity:0.5;} 50%{opacity:1;} 100%{opacity:0.5;} }
+
+    .dashboard-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 30px; border-radius: 30px; text-align: center; transition: 0.3s; cursor: pointer; }
+    .dashboard-btn:hover { background: rgba(108,92,231,0.2); transform: scale(1.02); }
+    body.couple-mode .dashboard-btn:hover { background: rgba(232,67,147,0.2); box-shadow: 0 0 30px rgba(232,67,147,0.2); }
+    .dashboard-btn h2 { color: white; margin-bottom: 8px; }
+    .dashboard-btn p { color: #b2bec3; font-size: 0.9rem; }
+    .back-btn { background: #636e72; margin-top: 10px; width:auto; padding: 8px 24px; }
+    .title { color: white; text-align:center; margin-bottom: 8px; font-size:2rem; letter-spacing:2px; animation: titlePulse 3s infinite; }
+    @keyframes titlePulse {
+      0% { text-shadow: 0 0 5px rgba(255,255,255,0.1); }
+      50% { text-shadow: 0 0 20px rgba(232,67,147,0.4); }
+      100% { text-shadow: 0 0 5px rgba(255,255,255,0.1); }
+    }
+    .subtitle { color: #b2bec3; text-align:center; margin-bottom: 20px; }
+    .brand { margin-top: 4px; color: rgba(255,255,255,0.12); font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; text-align:center; }
+    .brand strong { color: rgba(255,255,255,0.25); font-weight:400; }
+
+    .context-menu { position:fixed; background:#2d3436; border-radius:12px; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,0.7); z-index:1000; display:none; }
+    .context-menu button { background:transparent; color:white; border:none; padding:6px 14px; width:100%; text-align:left; cursor:pointer; border-radius:6px; }
+    .context-menu button:hover { background:rgba(255,255,255,0.1); }
+
+    .spinner { border:2px solid rgba(255,255,255,0.1); border-top:2px solid #6c5ce7; border-radius:50%; width:20px; height:20px; animation: spin 0.8s linear infinite; display:inline-block; margin-right:8px; }
+    @keyframes spin { 100%{ transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+<!-- Heart rain container -->
+<div class="hearts-container" id="heartContainer"></div>
+
+<div id="app">
+  <!-- Auth Page -->
+  <div id="authPage" class="glass page">
+    <h1 class="title">🔐 Orion Private Chat</h1>
+    <p class="subtitle">Secure • Private • ❤️ for Couples</p>
+    <div id="authForm">
+      <input type="text" id="authUsername" placeholder="Username">
+      <input type="email" id="authEmail" placeholder="Email">
+      <input type="password" id="authPassword" placeholder="Password">
+      <div class="flex">
+        <button id="registerBtn">Sign Up</button>
+        <button id="loginBtn" style="background:linear-gradient(135deg,#00b894,#55efc4);">Login</button>
+      </div>
+      <div id="authError" style="color:#ff6b6b;margin-top:10px;display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboardPage" class="glass page hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <h1 class="title" style="font-size:1.6rem;margin:0;">👋 Welcome, <span id="dashUsername"></span></h1>
+      <div class="couple-toggle">
+        <span>💕 Couple Mode</span>
+        <input type="checkbox" id="coupleToggle">
+      </div>
+    </div>
+    <div id="badgeContainer" style="text-align:center;margin:4px 0;"></div>
+    <div style="display:flex;flex-direction:column;gap:16px;margin:20px 0;">
+      <div class="dashboard-btn" id="createRoomBtn"><h2>🆕 Create Room</h2><p>Make a new room with ID & password – share with your partner</p></div>
+      <div class="dashboard-btn" id="joinRoomBtn"><h2>🔗 Join Room</h2><p>Enter existing room ID and password</p></div>
+    </div>
+    <button id="logoutDashBtn" style="background:#d63031;width:auto;padding:8px 24px;">Logout</button>
+    <div class="brand"><strong>✦ ORION PRIVATE CHAT ✦</strong></div>
+  </div>
+
+  <!-- Room Action -->
+  <div id="roomActionPage" class="glass page hidden">
+    <h2 id="roomActionTitle" class="title">Create Room</h2>
+    <input type="text" id="roomIdInput" placeholder="Room ID (choose unique)">
+    <input type="password" id="roomPassInput" placeholder="Room password">
+    <button id="roomActionSubmit" style="margin-top:10px;">Submit</button>
+    <button id="roomActionBack" class="back-btn">Back</button>
+    <div id="roomActionError" style="color:#ff6b6b;margin-top:10px;display:none;"></div>
+  </div>
+
+  <!-- Chat Page -->
+  <div id="chatPage" class="glass page hidden" style="padding:16px;">
+    <div class="chat-header">
+      <h2 style="color:white;">💬 <span id="chatRoomId"></span></h2>
+      <span id="onlineCount" class="online-badge">🟢 0 online</span>
+    </div>
+    <div class="chat-container">
+      <div id="chatMessages" class="chat-box"></div>
+      <div id="typingIndicator" class="typing-indicator"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="msgInput" placeholder="Type your message..." style="flex:3;">
+        <button id="sendBtn" style="flex:1;">Send</button>
+      </div>
+    </div>
+    <button id="leaveChatBtn" style="margin-top:8px;background:#d63031;width:auto;padding:8px 24px;align-self:flex-start;">Leave Room</button>
+    <div class="brand"><strong>✦ ORION PRIVATE CHAT ✦</strong></div>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div id="contextMenu" class="context-menu"><button id="editMsgBtn">✏️ Edit</button></div>
+
+<script>
+// ---------- HEART RAIN GENERATOR ----------
+function createHearts() {
+  const container = document.getElementById('heartContainer');
+  const heartTypes = ['❤️', '💕', '💖', '💗', '💘', '💝', '💓'];
+  for (let i = 0; i < 35; i++) {
+    const heart = document.createElement('div');
+    heart.className = 'heart-rain';
+    heart.textContent = heartTypes[Math.floor(Math.random() * heartTypes.length)];
+    const size = 18 + Math.random() * 28;
+    heart.style.fontSize = size + 'px';
+    heart.style.left = Math.random() * 100 + '%';
+    heart.style.animationDuration = (8 + Math.random() * 12) + 's';
+    heart.style.animationDelay = (Math.random() * 10) + 's';
+    heart.style.setProperty('--rot', (Math.random() * 40 - 20) + 'deg');
+    heart.style.opacity = 0.3 + Math.random() * 0.5;
+    container.appendChild(heart);
+  }
+}
+createHearts();
+
+// Couple mode toggle
+const coupleToggle = document.getElementById('coupleToggle');
+const heartContainer = document.getElementById('heartContainer');
+coupleToggle.addEventListener('change', function() {
+  document.body.classList.toggle('couple-mode');
+  if (this.checked) {
+    heartContainer.style.display = 'block';
+    document.querySelectorAll('.heart-rain').forEach(h => {
+      h.style.opacity = '0.9';
+    });
+  } else {
+    heartContainer.style.display = 'block';
+    document.querySelectorAll('.heart-rain').forEach(h => {
+      h.style.opacity = '0.3';
+    });
+  }
+  updateCoupleBadge();
+});
+
+// Badge update
+function updateCoupleBadge() {
+  const badgeContainer = document.getElementById('badgeContainer');
+  if (coupleToggle.checked) {
+    badgeContainer.innerHTML = '<span class="badge-couple">💕 Verified Couple</span>';
+  } else {
+    badgeContainer.innerHTML = '';
+  }
+}
+
+// ---------- CHAT LOGIC (same as before, with couple mode integrated) ----------
+// ... (keep all the existing chat functions unchanged)
+
+// I'll keep the rest of the JavaScript exactly as in the previous version.
+// The only changes are the heart rain and toggle integration.
+
+// To avoid repetition, I'll assume the rest of the JS is identical to the previous working version.
+// But for completeness, I'll paste the whole script below.
+// (This is the same as the previous working code, only the couple toggle and heart rain added)
+
+// The rest of the code is exactly the same as in the previous message's <script> block.
+// I'll just copy it here to ensure a complete file.
+
+// ---------- CONFIG ----------
+const COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393','#00b894','#6c5ce7'];
+const userColorMap = {};
+function getUserColor(username) {
+  if (!userColorMap[username]) {
+    const idx = Object.keys(userColorMap).length % COLORS.length;
+    userColorMap[username] = COLORS[idx];
+  }
+  return userColorMap[username];
+}
+
+let currentToken='', currentUser='', currentRoom='', roomSecret='', socket=null, isCreating=true;
+let messageMap = {};
+let currentContextMsgId = null;
+
+// DOM refs
+const authPage=document.getElementById('authPage'), dashboardPage=document.getElementById('dashboardPage'), roomActionPage=document.getElementById('roomActionPage'), chatPage=document.getElementById('chatPage');
+const authUsername=document.getElementById('authUsername'), authEmail=document.getElementById('authEmail'), authPassword=document.getElementById('authPassword');
+const registerBtn=document.getElementById('registerBtn'), loginBtn=document.getElementById('loginBtn'), authError=document.getElementById('authError');
+const dashUsername=document.getElementById('dashUsername');
+const createRoomBtn=document.getElementById('createRoomBtn'), joinRoomBtn=document.getElementById('joinRoomBtn'), logoutDashBtn=document.getElementById('logoutDashBtn');
+const roomActionTitle=document.getElementById('roomActionTitle'), roomIdInput=document.getElementById('roomIdInput'), roomPassInput=document.getElementById('roomPassInput');
+const roomActionSubmit=document.getElementById('roomActionSubmit'), roomActionBack=document.getElementById('roomActionBack'), roomActionError=document.getElementById('roomActionError');
+const chatRoomId=document.getElementById('chatRoomId'), chatMessages=document.getElementById('chatMessages'), msgInput=document.getElementById('msgInput'), sendBtn=document.getElementById('sendBtn'), onlineCount=document.getElementById('onlineCount'), typingIndicator=document.getElementById('typingIndicator'), leaveChatBtn=document.getElementById('leaveChatBtn');
+const contextMenu=document.getElementById('contextMenu'), editMsgBtn=document.getElementById('editMsgBtn');
+
+function showNotification(t){const d=document.createElement('div');d.className='notification';d.innerText=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3000);}
+function showPage(p){[authPage,dashboardPage,roomActionPage,chatPage].forEach(x=>x.classList.add('hidden'));p.classList.remove('hidden');}
+function setError(el,msg){if(msg){el.style.display='block';el.innerText=msg;}else{el.style.display='none';}}
+
+// Auth
+registerBtn.onclick=async()=>{const u=authUsername.value.trim(),e=authEmail.value.trim(),p=authPassword.value.trim();if(!u||!e||!p)return setError(authError,'All fields required');try{const r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,email:e,password:p})});const d=await r.json();if(!r.ok)throw new Error(d.error);currentToken=d.token;currentUser=d.username;showNotification('✅ Registered!');goDashboard();}catch(e){setError(authError,e.message);}};
+loginBtn.onclick=async()=>{const u=authUsername.value.trim(),p=authPassword.value.trim();if(!u||!p)return setError(authError,'Username and password required');try{const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const d=await r.json();if(!r.ok)throw new Error(d.error);currentToken=d.token;currentUser=d.username;showNotification('✅ Logged in!');goDashboard();}catch(e){setError(authError,e.message);}};
+
+function goDashboard(){
+  dashUsername.innerText=currentUser;
+  updateCoupleBadge();
+  showPage(dashboardPage);
+}
+
+// Dashboard room
+createRoomBtn.onclick=()=>{isCreating=true;roomActionTitle.innerText='🆕 Create Room';roomIdInput.value='';roomPassInput.value='';setError(roomActionError,null);showPage(roomActionPage);};
+joinRoomBtn.onclick=()=>{isCreating=false;roomActionTitle.innerText='🔗 Join Room';roomIdInput.value='';roomPassInput.value='';setError(roomActionError,null);showPage(roomActionPage);};
+roomActionBack.onclick=()=>showPage(dashboardPage);
+roomActionSubmit.onclick=async()=>{const rid=roomIdInput.value.trim(),pass=roomPassInput.value.trim();if(!rid||!pass)return setError(roomActionError,'Room ID and password required');const endpoint=isCreating?'/create_room':'/join_room';try{const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+currentToken},body:JSON.stringify({roomId:rid,password:pass})});const d=await r.json();if(!r.ok)throw new Error(d.error);currentRoom=rid;roomSecret=pass;enterChat();}catch(e){setError(roomActionError,e.message);}};
+logoutDashBtn.onclick=()=>{currentToken='';cu
